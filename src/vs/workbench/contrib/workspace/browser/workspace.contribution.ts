@@ -13,10 +13,10 @@ import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
 import { IInstantiationService, ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { Severity } from 'vs/platform/notification/common/notification';
 import { Registry } from 'vs/platform/registry/common/platform';
-import { IWorkspaceTrustManagementService, IWorkspaceTrustRequestService, IWorkspaceTrustStorageService, WorkspaceTrustRequestOptions, workspaceTrustToString } from 'vs/platform/workspace/common/workspaceTrust';
+import { IWorkspaceTrustManagementService, IWorkspaceTrustRequestService, WorkspaceTrustRequestOptions, workspaceTrustToString } from 'vs/platform/workspace/common/workspaceTrust';
 import { Extensions as WorkbenchExtensions, IWorkbenchContribution, IWorkbenchContributionsRegistry } from 'vs/workbench/common/contributions';
 import { IActivityService, IconBadge } from 'vs/workbench/services/activity/common/activity';
-import { ILifecycleService, LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
+import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
 import { registerIcon } from 'vs/platform/theme/common/iconRegistry';
 import { Codicon } from 'vs/base/common/codicons';
 import { ThemeColor } from 'vs/workbench/api/common/extHostTypes';
@@ -28,7 +28,7 @@ import { IEditorRegistry, Extensions as EditorExtensions, EditorDescriptor } fro
 import { WorkspaceTrustEditor } from 'vs/workbench/contrib/workspace/browser/workspaceTrustEditor';
 import { WorkspaceTrustEditorInput } from 'vs/workbench/services/workspaces/browser/workspaceTrustEditorInput';
 import { isWorkspaceTrustEnabled, WorkspaceTrustContext, WORKSPACE_TRUST_ENABLED, WORKSPACE_TRUST_EXTENSION_REQUEST } from 'vs/workbench/services/workspaces/common/workspaceTrust';
-import { EditorInput, Extensions as EditorInputExtensions, IEditorInputSerializer, IEditorInputFactoryRegistry, EditorResourceAccessor } from 'vs/workbench/common/editor';
+import { EditorInput, Extensions as EditorInputExtensions, IEditorInputSerializer, IEditorInputFactoryRegistry } from 'vs/workbench/common/editor';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
@@ -37,9 +37,8 @@ import { isWeb } from 'vs/base/common/platform';
 import { IsWebContext } from 'vs/platform/contextkey/common/contextkeys';
 import { dirname, resolve } from 'vs/base/common/path';
 import product from 'vs/platform/product/common/product';
-import { FileAccess, Schemas } from 'vs/base/common/network';
+import { FileAccess } from 'vs/base/common/network';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { URI } from 'vs/base/common/uri';
 import { MarkdownString } from 'vs/base/common/htmlContent';
 
 const workspaceTrustIcon = registerIcon('workspace-trust-icon', Codicon.shield, localize('workspaceTrustIcon', "Icon for workspace trust badge."));
@@ -56,7 +55,6 @@ export class WorkspaceTrustRequestHandler extends Disposable implements IWorkben
 		@IActivityService private readonly activityService: IActivityService,
 		@ICommandService private readonly commandService: ICommandService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
-		@IWorkspaceTrustStorageService private readonly workspaceTrustStorageService: IWorkspaceTrustStorageService,
 		@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IWorkspaceTrustRequestService private readonly workspaceTrustRequestService: IWorkspaceTrustRequestService,
@@ -104,11 +102,11 @@ export class WorkspaceTrustRequestHandler extends Disposable implements IWorkben
 									markdown: new MarkdownString(localize('workspaceTrustDescription', "{0} provides many powerful features that rely on the files that are open in the current workspace. This can mean unintended code execution from the workspace and should only happen if you trust the source of the files you have open.", 'VS Code' || product.nameShort)),
 								},
 								{
-									markdown: new MarkdownString(`![${localize('altTextTrustedBadge', "Shield Badge on Activity Bar")}](${FileAccess.asBrowserUri('vs/workbench/contrib/workspace/browser/media/trusted-badge.png', require).toString(true)})\n*${localize('workspaceTrustBadgeDescription', "When features are disabled in an untrusted workspace, you will see this shield icon in the Activity Bar.")}*`),
+									markdown: new MarkdownString(`![${localize('altTextTrustedBadge', "Shield Badge on Activity Bar")}](${FileAccess.asBrowserUri('vs/workbench/contrib/workspace/browser/media/trusted-badge.png', require).toString(false)})\n*${localize('workspaceTrustBadgeDescription', "When features are disabled in an untrusted workspace, you will see this shield icon in the Activity Bar.")}*`),
 									classes: ['workspace-trust-dialog-image-row', 'badge-row']
 								},
 								{
-									markdown: new MarkdownString(`![${localize('altTextUntrustedStatus', "Workspace Trust Status Bar Entry")}](${FileAccess.asBrowserUri('vs/workbench/contrib/workspace/browser/media/untrusted-status.png', require).toString(true)})\n*${localize('workspaceTrustUntrustedDescription', "When the workspace is untrusted, you will see this status bar entry. It is hidden when the workspace is trusted.")}*`),
+									markdown: new MarkdownString(`![${localize('altTextUntrustedStatus', "Workspace Trust Status Bar Entry")}](${FileAccess.asBrowserUri('vs/workbench/contrib/workspace/browser/media/untrusted-status.png', require).toString(false)})\n*${localize('workspaceTrustUntrustedDescription', "When the workspace is untrusted, you will see this status bar entry. It is hidden when the workspace is trusted.")}*`),
 									classes: ['workspace-trust-dialog-image-row', 'status-bar']
 								},
 								{
@@ -217,8 +215,8 @@ export class WorkspaceTrustRequestHandler extends Disposable implements IWorkben
 			return e.join(new Promise(async resolve => {
 				// Workspace is trusted and there are added/changed folders
 				if (trusted && (e.changes.added.length || e.changes.changed.length)) {
-					const addedFoldersTrustStateInfo = e.changes.added.map(folder => this.workspaceTrustStorageService.getFolderTrustStateInfo(folder.uri));
-					if (!addedFoldersTrustStateInfo.map(i => i.trusted).every(trusted => trusted)) {
+					const addedFoldersTrustInfo = e.changes.added.map(folder => this.workspaceTrustManagementService.getFolderTrustInfo(folder.uri));
+					if (!addedFoldersTrustInfo.map(i => i.trusted).every(trusted => trusted)) {
 						const result = await this.dialogService.show(
 							Severity.Info,
 							localize('addWorkspaceFolderMessage', "Do you trust the files in this folder?"),
@@ -231,7 +229,7 @@ export class WorkspaceTrustRequestHandler extends Disposable implements IWorkben
 						);
 
 						// Mark added/changed folders as trusted
-						this.workspaceTrustStorageService.setFoldersTrust(addedFoldersTrustStateInfo.map(i => i.uri), result.choice === 0);
+						this.workspaceTrustManagementService.setFoldersTrust(addedFoldersTrustInfo.map(i => i.uri), result.choice === 0);
 
 						resolve();
 					}
@@ -434,36 +432,6 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 	});
 
 /**
- *
- */
-class WorkspaceTrustFileHandler extends Disposable implements IWorkbenchContribution {
-	constructor(
-		@IEditorService private readonly editorService: IEditorService,
-		@ILifecycleService private readonly lifecycleService: ILifecycleService,
-		@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService
-	) {
-		super();
-
-		this.registerListeners();
-	}
-
-	private getOpenEditors(): URI[] {
-		return this.editorService.editors
-			.filter(editor => EditorResourceAccessor.getCanonicalUri(editor, { filterByScheme: Schemas.file }))
-			.map(editorInput => editorInput.resource!);
-	}
-
-	private registerListeners() {
-		this.editorService.onDidCloseEditor(() => this.workspaceTrustManagementService.setOpenEditors(this.getOpenEditors()));
-		this.editorService.onDidVisibleEditorsChange(() => this.workspaceTrustManagementService.setOpenEditors(this.getOpenEditors()));
-		this.lifecycleService.when(LifecyclePhase.Restored).then(() => this.workspaceTrustManagementService.setOpenEditors(this.getOpenEditors()));
-	}
-}
-
-Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench)
-	.registerWorkbenchContribution(WorkspaceTrustFileHandler, LifecyclePhase.Starting);
-
-/**
  * Telemetry
  */
 class WorkspaceTrustTelemetryContribution extends Disposable implements IWorkbenchContribution {
@@ -473,8 +441,7 @@ class WorkspaceTrustTelemetryContribution extends Disposable implements IWorkben
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService,
-		@IWorkspaceTrustRequestService private readonly workspaceTrustRequestService: IWorkspaceTrustRequestService,
-		@IWorkspaceTrustStorageService private readonly workspaceTrustStorageService: IWorkspaceTrustStorageService,
+		@IWorkspaceTrustRequestService private readonly workspaceTrustRequestService: IWorkspaceTrustRequestService
 	) {
 		super();
 
@@ -491,18 +458,14 @@ class WorkspaceTrustTelemetryContribution extends Disposable implements IWorkben
 
 		type WorkspaceTrustInfoEventClassification = {
 			trustedFoldersCount: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
-			untrustedFoldersCount: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
 		};
 
 		type WorkspaceTrustInfoEvent = {
 			trustedFoldersCount: number,
-			untrustedFoldersCount: number
 		};
 
-		const trustStateInfo = this.workspaceTrustStorageService.getTrustStateInfo();
 		this.telemetryService.publicLog2<WorkspaceTrustInfoEvent, WorkspaceTrustInfoEventClassification>('workspaceTrustFolderCounts', {
-			trustedFoldersCount: trustStateInfo.uriTrustInfo.filter(item => item.trusted).length,
-			untrustedFoldersCount: trustStateInfo.uriTrustInfo.filter(item => !item.trusted).length
+			trustedFoldersCount: this.workspaceTrustManagementService.getTrustedFolders().length,
 		});
 	}
 
@@ -552,7 +515,7 @@ class WorkspaceTrustTelemetryContribution extends Disposable implements IWorkben
 			};
 
 			for (const folder of this.workspaceContextService.getWorkspace().folders) {
-				const { trusted, uri } = this.workspaceTrustStorageService.getFolderTrustStateInfo(folder.uri);
+				const { trusted, uri } = this.workspaceTrustManagementService.getFolderTrustInfo(folder.uri);
 				if (!trusted) {
 					continue;
 				}

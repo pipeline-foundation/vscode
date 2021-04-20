@@ -32,7 +32,7 @@ import { foreground } from 'vs/platform/theme/common/colorRegistry';
 import { attachButtonStyler, attachLinkStyler, attachStylerCallback } from 'vs/platform/theme/common/styler';
 import { IColorTheme, ICssStyleCollector, IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
-import { IWorkspaceTrustManagementService, IWorkspaceTrustStorageService } from 'vs/platform/workspace/common/workspaceTrust';
+import { IWorkspaceTrustManagementService } from 'vs/platform/workspace/common/workspaceTrust';
 import { isSingleFolderWorkspaceIdentifier, toWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
 import { EditorPane } from 'vs/workbench/browser/parts/editor/editorPane';
 import { EditorOptions, IEditorOpenContext } from 'vs/workbench/common/editor';
@@ -42,7 +42,7 @@ import { getInstalledExtensions, IExtensionStatus } from 'vs/workbench/contrib/e
 import { trustedForegroundColor, untrustedForegroundColor } from 'vs/workbench/contrib/workspace/browser/workspaceTrustColors';
 import { IWorkspaceTrustSettingChangeEvent, WorkspaceTrustSettingArrayRenderer, WorkspaceTrustTree, WorkspaceTrustTreeModel } from 'vs/workbench/contrib/workspace/browser/workspaceTrustTree';
 import { filterSettingsRequireWorkspaceTrust, IWorkbenchConfigurationService } from 'vs/workbench/services/configuration/common/configuration';
-import { IExtensionWorkspaceTrustRequestService } from 'vs/workbench/services/extensions/common/extensionWorkspaceTrustRequest';
+import { IExtensionManifestPropertiesService } from 'vs/workbench/services/extensions/common/extensionManifestPropertiesService';
 import { WorkspaceTrustEditorInput } from 'vs/workbench/services/workspaces/browser/workspaceTrustEditorInput';
 
 const untrustedIcon = registerCodicon('workspace-untrusted-icon', Codicon.workspaceUntrusted);
@@ -79,12 +79,11 @@ export class WorkspaceTrustEditor extends EditorPane {
 		@IStorageService storageService: IStorageService,
 		@IWorkspaceContextService private readonly workspaceService: IWorkspaceContextService,
 		@IExtensionsWorkbenchService private readonly extensionWorkbenchService: IExtensionsWorkbenchService,
-		@IExtensionWorkspaceTrustRequestService private readonly extensionWorkspaceTrustRequestService: IExtensionWorkspaceTrustRequestService,
+		@IExtensionManifestPropertiesService private readonly extensionManifestPropertiesService: IExtensionManifestPropertiesService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IContextMenuService private readonly contextMenuService: IContextMenuService,
 		@IDialogService private readonly dialogService: IDialogService,
 		@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService,
-		@IWorkspaceTrustStorageService private readonly workspaceTrustStorageService: IWorkspaceTrustStorageService,
 		@IWorkbenchConfigurationService private readonly configurationService: IWorkbenchConfigurationService,
 	) { super(WorkspaceTrustEditor.ID, telemetryService, themeService, storageService); }
 
@@ -128,10 +127,10 @@ export class WorkspaceTrustEditor extends EditorPane {
 	}
 
 	private registerListeners(): void {
-		this._register(this.workspaceTrustStorageService.onDidStorageChange(() => this.render()));
-		this._register(this.workspaceTrustManagementService.onDidChangeTrust(() => this.render()));
 		this._register(this.extensionWorkbenchService.onChange(() => this.render()));
 		this._register(this.configurationService.onDidChangeUntrustdSettings(() => this.render()));
+		this._register(this.workspaceTrustManagementService.onDidChangeTrust(() => this.render()));
+		this._register(this.workspaceTrustManagementService.onDidChangeTrustedFolders(() => this.render()));
 	}
 
 	private getHeaderContainerClass(trusted: boolean): string {
@@ -213,15 +212,16 @@ export class WorkspaceTrustEditor extends EditorPane {
 		this.renderAffectedFeatures(settingsRequiringTrustedWorkspaceCount, onDemandExtensionCount + onStartExtensionCount);
 
 		// Configuration Tree
-		this.workspaceTrustSettingsTreeModel.update(this.workspaceTrustStorageService.getTrustStateInfo());
+		this.workspaceTrustSettingsTreeModel.update(this.workspaceTrustManagementService.getTrustedFolders());
 		this.trustSettingsTree.setChildren(null, Iterable.map(this.workspaceTrustSettingsTreeModel.settings, s => { return { element: s }; }));
 
+		this.bodyScrollBar.getDomNode().style.height = `calc(100% - ${this.headerContainer.clientHeight}px)`;
 		this.bodyScrollBar.scanDomNode();
 		this.rendering = false;
 	}
 
 	private getExtensionCountByTrustRequestType(extensions: IExtensionStatus[], trustRequestType: ExtensionWorkspaceTrustRequestType): number {
-		const filtered = extensions.filter(ext => this.extensionWorkspaceTrustRequestService.getExtensionWorkspaceTrustRequestType(ext.local.manifest) === trustRequestType);
+		const filtered = extensions.filter(ext => this.extensionManifestPropertiesService.getExtensionWorkspaceTrustRequestType(ext.local.manifest) === trustRequestType);
 		const set = new Set<string>();
 		for (const ext of filtered) {
 			set.add(ext.identifier.id);
@@ -318,7 +318,7 @@ export class WorkspaceTrustEditor extends EditorPane {
 				if (!uris) {
 					this.workspaceTrustManagementService.setWorkspaceTrust(true);
 				} else {
-					this.workspaceTrustStorageService.setFoldersTrust(uris, true);
+					this.workspaceTrustManagementService.setFoldersTrust(uris, true);
 				}
 			};
 
@@ -414,7 +414,7 @@ export class WorkspaceTrustEditor extends EditorPane {
 
 		if (isArray(change.value)) {
 			if (change.key === 'trustedFolders') {
-				applyChangesWithPrompt(false, () => this.workspaceTrustStorageService.setTrustedFolders(change.value!));
+				applyChangesWithPrompt(false, () => this.workspaceTrustManagementService.setTrustedFolders(change.value!));
 			}
 		}
 	}
@@ -430,8 +430,6 @@ export class WorkspaceTrustEditor extends EditorPane {
 		this.layoutParticipants.forEach(participant => {
 			participant.layout();
 		});
-
-		this.bodyScrollBar.getDomNode().style.height = `calc(100% - ${this.headerContainer.clientHeight}px)`;
 
 		this.bodyScrollBar.scanDomNode();
 	}
