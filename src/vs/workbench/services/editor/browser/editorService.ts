@@ -5,8 +5,7 @@
 
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IResourceEditorInput, ITextEditorOptions, IEditorOptions, EditorActivation, EditorOverride, IResourceEditorInputIdentifier } from 'vs/platform/editor/common/editor';
-import { SideBySideEditor, IEditorInput, IEditorPane, GroupIdentifier, IFileEditorInput, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, IEditorInputFactoryRegistry, Extensions as EditorExtensions, EditorInput, SideBySideEditorInput, IEditorInputWithOptions, isEditorInputWithOptions, EditorOptions, TextEditorOptions, IEditorIdentifier, IEditorCloseEvent, ITextEditorPane, ITextDiffEditorPane, IRevertOptions, SaveReason, EditorsOrder, isTextEditorPane, IWorkbenchEditorConfiguration, EditorResourceAccessor, IVisibleEditorPane } from 'vs/workbench/common/editor';
-import { DEFAULT_EDITOR_ASSOCIATION } from 'vs/workbench/browser/editor';
+import { SideBySideEditor, IEditorInput, IEditorPane, GroupIdentifier, IFileEditorInput, IUntitledTextResourceEditorInput, IResourceDiffEditorInput, IEditorInputFactoryRegistry, Extensions as EditorExtensions, EditorInput, SideBySideEditorInput, IEditorInputWithOptions, isEditorInputWithOptions, EditorOptions, TextEditorOptions, IEditorIdentifier, IEditorCloseEvent, ITextEditorPane, ITextDiffEditorPane, IRevertOptions, SaveReason, EditorsOrder, isTextEditorPane, IWorkbenchEditorConfiguration, EditorResourceAccessor, IVisibleEditorPane, IEditorInputWithOptionsAndGroup } from 'vs/workbench/common/editor';
 import { ResourceEditorInput } from 'vs/workbench/common/editor/resourceEditorInput';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { ResourceMap } from 'vs/base/common/map';
@@ -36,8 +35,8 @@ import { indexOfPath } from 'vs/base/common/extpath';
 import { IUriIdentityService } from 'vs/workbench/services/uriIdentity/common/uriIdentity';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { ILogService } from 'vs/platform/log/common/log';
-import { IEditorOverrideService } from 'vs/workbench/services/editor/browser/editorOverrideService';
-import { ContributedEditorPriority } from 'vs/workbench/services/editor/common/editorOverrideService';
+import { ContributedEditorPriority, DEFAULT_EDITOR_ASSOCIATION, IEditorOverrideService } from 'vs/workbench/services/editor/common/editorOverrideService';
+import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 
 type CachedEditorInput = ResourceEditorInput | IFileEditorInput | UntitledTextEditorInput;
 type OpenInEditorGroup = IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE;
@@ -77,6 +76,7 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 		@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,
 		@ILogService private readonly logService: ILogService,
 		@IEditorOverrideService private readonly editorOverrideService: IEditorOverrideService,
+		@IExtensionService private readonly extensionService: IExtensionService
 	) {
 		super();
 
@@ -784,7 +784,7 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 	openEditors(editors: IEditorInputWithOptions[], group?: OpenInEditorGroup): Promise<IEditorPane[]>;
 	openEditors(editors: IResourceEditorInputType[], group?: OpenInEditorGroup): Promise<IEditorPane[]>;
 	async openEditors(editors: Array<IEditorInputWithOptions | IResourceEditorInputType>, group?: OpenInEditorGroup): Promise<IEditorPane[]> {
-
+		await this.extensionService.whenInstalledExtensionsRegistered();
 		// Convert to typed editors and options
 		const typedEditors: IEditorInputWithOptions[] = editors.map(editor => {
 			if (isEditorInputWithOptions(editor)) {
@@ -819,7 +819,10 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 		const mapGroupToEditors = new Map<IEditorGroup, IEditorInputWithOptions[]>();
 		for (const [group, editorsWithOptions] of mapGroupToEditorsCandidates) {
 			for (const { editor, options } of editorsWithOptions) {
-				const editorOverride = await this.editorOverrideService.resolveEditorOverride(editor, options, group);
+				let editorOverride: IEditorInputWithOptionsAndGroup | undefined;
+				if (options?.override !== EditorOverride.DISABLED) {
+					editorOverride = await this.editorOverrideService.resolveEditorOverride(editor, options, group);
+				}
 
 				const targetGroup = editorOverride?.group ?? group;
 				let targetGroupEditors = mapGroupToEditors.get(targetGroup);
@@ -845,22 +848,11 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 
 	//#region isOpened()
 
-	isOpened(editor: IEditorInput): boolean;
-	isOpened(editor: IResourceEditorInputIdentifier): boolean;
-	isOpened(editor: IEditorInput | IResourceEditorInputIdentifier): boolean;
-	isOpened(editor: IEditorInput | IResourceEditorInputIdentifier): boolean {
-		if (editor instanceof EditorInput) {
-			return this.editorGroupService.groups.some(group => group.contains(editor));
-		}
-
-		if (editor.resource) {
-			return this.editorsObserver.hasEditor({
-				resource: this.asCanonicalEditorResource(editor.resource),
-				typeId: editor.typeId
-			});
-		}
-
-		return false;
+	isOpened(editor: IResourceEditorInputIdentifier): boolean {
+		return this.editorsObserver.hasEditor({
+			resource: this.asCanonicalEditorResource(editor.resource),
+			typeId: editor.typeId
+		});
 	}
 
 	//#endregion
@@ -1326,9 +1318,7 @@ export class DelegatingEditorService implements IEditorService {
 		return this.editorService.replaceEditors(editors, group);
 	}
 
-	isOpened(editor: IEditorInput): boolean;
-	isOpened(editor: IResourceEditorInputIdentifier): boolean;
-	isOpened(editor: IEditorInput | IResourceEditorInputIdentifier): boolean { return this.editorService.isOpened(editor); }
+	isOpened(editor: IResourceEditorInputIdentifier): boolean { return this.editorService.isOpened(editor); }
 
 	findEditors(resource: URI, group: IEditorGroup | GroupIdentifier): ReadonlyArray<IEditorInput> { return this.editorService.findEditors(resource, group); }
 
