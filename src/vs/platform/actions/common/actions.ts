@@ -123,6 +123,7 @@ export class MenuId {
 	static readonly SCMTitle = new MenuId('SCMTitle');
 	static readonly SearchContext = new MenuId('SearchContext');
 	static readonly StatusBarWindowIndicatorMenu = new MenuId('StatusBarWindowIndicatorMenu');
+	static readonly StatusBarRemoteIndicatorMenu = new MenuId('StatusBarRemoteIndicatorMenu');
 	static readonly TestItem = new MenuId('TestItem');
 	static readonly TouchBarContext = new MenuId('TouchBarContext');
 	static readonly TitleBarContext = new MenuId('TitleBarContext');
@@ -159,6 +160,7 @@ export class MenuId {
 	static readonly TerminalContainerContext = new MenuId('TerminalContainerContext');
 	static readonly TerminalToolbarContext = new MenuId('TerminalToolbarContext');
 	static readonly TerminalTabsWidgetContext = new MenuId('TerminalTabsWidgetContext');
+	static readonly TerminalTabsWidgetEmptyContext = new MenuId('TerminalTabsWidgetEmptyContext');
 
 	readonly id: number;
 	readonly _debugName: string;

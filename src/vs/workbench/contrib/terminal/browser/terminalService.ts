@@ -38,6 +38,8 @@ import { Codicon, iconRegistry } from 'vs/base/common/codicons';
 import { ITerminalContributionService } from 'vs/workbench/contrib/terminal/common/terminalExtensionPoints';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { URI } from 'vs/base/common/uri';
+import { ILabelService } from 'vs/platform/label/common/label';
+import { Schemas } from 'vs/base/common/network';
 
 interface IExtHostReadyEntry {
 	promise: Promise<void>;
@@ -125,6 +127,7 @@ export class TerminalService implements ITerminalService {
 	constructor(
 		@IContextKeyService private _contextKeyService: IContextKeyService,
 		@IWorkbenchLayoutService private _layoutService: IWorkbenchLayoutService,
+		@ILabelService labelService: ILabelService,
 		@ILifecycleService lifecycleService: ILifecycleService,
 		@IDialogService private _dialogService: IDialogService,
 		@IInstantiationService private _instantiationService: IInstantiationService,
@@ -169,8 +172,20 @@ export class TerminalService implements ITerminalService {
 			if (e.affectsConfiguration('terminal.integrated.profiles.windows') ||
 				e.affectsConfiguration('terminal.integrated.profiles.osx') ||
 				e.affectsConfiguration('terminal.integrated.profiles.linux') ||
+				e.affectsConfiguration('terminal.integrated.defaultProfile.windows') ||
+				e.affectsConfiguration('terminal.integrated.defaultProfile.osx') ||
+				e.affectsConfiguration('terminal.integrated.defaultProfile.linux') ||
 				e.affectsConfiguration('terminal.integrated.useWslProfiles')) {
 				this._refreshAvailableProfiles();
+			}
+		});
+
+		// Register a resource formatter for terminal URIs
+		labelService.registerFormatter({
+			scheme: Schemas.vscodeTerminal,
+			formatting: {
+				label: '${path}',
+				separator: ''
 			}
 		});
 
@@ -692,6 +707,12 @@ export class TerminalService implements ITerminalService {
 		}
 	}
 
+	public async focusTabsView(): Promise<void> {
+		await this.showPanel(true);
+		const pane = this._viewsService.getActiveViewWithId<TerminalViewPane>(TERMINAL_VIEW_ID);
+		pane?.terminalTabbedView?.focusTabsView();
+	}
+
 	private _getIndexFromId(terminalId: number): number {
 		let terminalIndex = -1;
 		this.terminalInstances.forEach((terminalInstance, i) => {
@@ -795,7 +816,7 @@ export class TerminalService implements ITerminalService {
 		return isWindows ? 'windows' : (isMacintosh ? 'osx' : 'linux');
 	}
 
-	public async showProfileQuickPick(type: 'setDefault' | 'createInstance'): Promise<void> {
+	public async showProfileQuickPick(type: 'setDefault' | 'createInstance', cwd?: string | URI): Promise<ITerminalInstance | undefined> {
 		let keyMods: IKeyMods | undefined;
 		const profiles = await this._detectProfiles(false);
 		const platformKey = await this._getPlatformKey();
@@ -871,22 +892,38 @@ export class TerminalService implements ITerminalService {
 			if (keyMods?.alt && activeInstance) {
 				// create split, only valid if there's an active instance
 				if (activeInstance) {
-					instance = this.splitInstance(activeInstance, value.profile);
+					instance = this.splitInstance(activeInstance, value.profile, cwd);
 				}
 			} else {
-				instance = this.createTerminal(value.profile);
+				instance = this.createTerminal(value.profile, cwd);
 			}
 			if (instance) {
 				this.showPanel(true);
 				this.setActiveInstance(instance);
+				return instance;
 			}
 		} else { // setDefault
 			if ('command' in value.profile) {
 				return; // Should never happen
 			}
-			await this._configurationService.updateValue(`terminal.integrated.shell.${platformKey}`, value.profile.path, ConfigurationTarget.USER);
-			await this._configurationService.updateValue(`terminal.integrated.shellArgs.${platformKey}`, value.profile.args, ConfigurationTarget.USER);
+			// Add the profile to settings if necessary
+			if (value.profile.isAutoDetected) {
+				const profilesConfig = await this._configurationService.getValue(`terminal.integrated.profiles.${platformKey}`);
+				if (typeof profilesConfig === 'object') {
+					const newProfile: ITerminalProfileObject = {
+						path: value.profile.path
+					};
+					if (value.profile.args) {
+						newProfile.args = value.profile.args;
+					}
+					(profilesConfig as { [key: string]: ITerminalProfileObject })[value.profile.profileName] = newProfile;
+				}
+				await this._configurationService.updateValue(`terminal.integrated.profiles.${platformKey}`, profilesConfig, ConfigurationTarget.USER);
+			}
+			// Set the default profile
+			await this._configurationService.updateValue(`terminal.integrated.defaultProfile.${platformKey}`, value.profile.profileName, ConfigurationTarget.USER);
 		}
+		return undefined;
 	}
 
 	private _createProfileQuickPickItem(profile: ITerminalProfile): IProfileQuickPickItem {
@@ -948,9 +985,13 @@ export class TerminalService implements ITerminalService {
 	}
 
 	public createTerminal(shellLaunchConfig?: IShellLaunchConfig): ITerminalInstance;
-	public createTerminal(profile: ITerminalProfile): ITerminalInstance;
-	public createTerminal(shellLaunchConfigOrProfile: IShellLaunchConfig | ITerminalProfile): ITerminalInstance {
+	public createTerminal(profile: ITerminalProfile, cwd?: string | URI): ITerminalInstance;
+	public createTerminal(shellLaunchConfigOrProfile: IShellLaunchConfig | ITerminalProfile, cwd?: string | URI): ITerminalInstance {
 		const shellLaunchConfig = this._convertProfileToShellLaunchConfig(shellLaunchConfigOrProfile);
+
+		if (cwd) {
+			shellLaunchConfig.cwd = cwd;
+		}
 
 		if (!shellLaunchConfig.customPtyImplementation && !this.isProcessSupportRegistered) {
 			throw new Error('Could not create terminal when process support is not registered');

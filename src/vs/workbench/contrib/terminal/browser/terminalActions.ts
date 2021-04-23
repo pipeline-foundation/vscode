@@ -31,7 +31,7 @@ import { PICK_WORKSPACE_FOLDER_COMMAND_ID } from 'vs/workbench/browser/actions/w
 import { FindInFilesCommand, IFindInFilesArgs } from 'vs/workbench/contrib/search/browser/searchActions';
 import { Direction, IRemoteTerminalService, ITerminalInstance, ITerminalService } from 'vs/workbench/contrib/terminal/browser/terminal';
 import { TerminalQuickAccessProvider } from 'vs/workbench/contrib/terminal/browser/terminalQuickAccess';
-import { IRemoteTerminalAttachTarget, ITerminalConfigHelper, ITerminalProfile, KEYBINDING_CONTEXT_TERMINAL_A11Y_TREE_FOCUS, KEYBINDING_CONTEXT_TERMINAL_ALT_BUFFER_ACTIVE, KEYBINDING_CONTEXT_TERMINAL_FIND_FOCUSED, KEYBINDING_CONTEXT_TERMINAL_FIND_NOT_VISIBLE, KEYBINDING_CONTEXT_TERMINAL_FIND_VISIBLE, KEYBINDING_CONTEXT_TERMINAL_FOCUS, KEYBINDING_CONTEXT_TERMINAL_IS_OPEN, KEYBINDING_CONTEXT_TERMINAL_PROCESS_SUPPORTED, KEYBINDING_CONTEXT_TERMINAL_TEXT_SELECTED, TERMINAL_ACTION_CATEGORY, TERMINAL_COMMAND_ID, TERMINAL_VIEW_ID, TitleEventSource } from 'vs/workbench/contrib/terminal/common/terminal';
+import { IRemoteTerminalAttachTarget, ITerminalConfigHelper, ITerminalProfile, KEYBINDING_CONTEXT_TERMINAL_A11Y_TREE_FOCUS, KEYBINDING_CONTEXT_TERMINAL_ALT_BUFFER_ACTIVE, KEYBINDING_CONTEXT_TERMINAL_FIND_FOCUSED, KEYBINDING_CONTEXT_TERMINAL_FIND_NOT_VISIBLE, KEYBINDING_CONTEXT_TERMINAL_FIND_VISIBLE, KEYBINDING_CONTEXT_TERMINAL_FOCUS, KEYBINDING_CONTEXT_TERMINAL_IS_OPEN, KEYBINDING_CONTEXT_TERMINAL_PROCESS_SUPPORTED, KEYBINDING_CONTEXT_TERMINAL_TABS_FOCUS, KEYBINDING_CONTEXT_TERMINAL_TEXT_SELECTED, TERMINAL_ACTION_CATEGORY, TERMINAL_COMMAND_ID, TERMINAL_VIEW_ID, TitleEventSource } from 'vs/workbench/contrib/terminal/common/terminal';
 import { ITerminalContributionService } from 'vs/workbench/contrib/terminal/common/terminalExtensionPoints';
 import { IConfigurationResolverService } from 'vs/workbench/services/configurationResolver/common/configurationResolver';
 import { IHistoryService } from 'vs/workbench/services/history/common/history';
@@ -154,16 +154,55 @@ export function registerTerminalActions() {
 				},
 			});
 		}
-		async run(accessor: ServicesAccessor, profile?: ITerminalProfile) {
+		async run(accessor: ServicesAccessor, event: unknown, profile?: ITerminalProfile) {
 			const terminalService = accessor.get(ITerminalService);
-			if (profile) {
-				const instance = await terminalService.createTerminal(profile);
-				terminalService.setActiveInstance(instance);
-				return terminalService.showPanel(true);
-			} else {
-				await terminalService.showProfileQuickPick('createInstance');
+			const workspaceContextService = accessor.get(IWorkspaceContextService);
+			const commandService = accessor.get(ICommandService);
+			const folders = workspaceContextService.getWorkspace().folders;
+			if (event instanceof MouseEvent && (event.altKey || event.ctrlKey)) {
+				const activeInstance = terminalService.getActiveInstance();
+				if (activeInstance) {
+					const cwd = await getCwdForSplit(terminalService.configHelper, activeInstance);
+					terminalService.splitInstance(activeInstance, profile, cwd);
+					return;
+				}
 			}
+
+			if (terminalService.isProcessSupportRegistered) {
+				let instance: ITerminalInstance | undefined;
+				let cwd: string | URI | undefined;
+				if (folders.length > 1) {
+					// multi-root workspace, create root picker
+					const options: IPickOptions<IQuickPickItem> = {
+						placeHolder: localize('workbench.action.terminal.newWorkspacePlaceholder', "Select current working directory for new terminal")
+					};
+					const workspace = await commandService.executeCommand(PICK_WORKSPACE_FOLDER_COMMAND_ID, [options]);
+					if (!workspace) {
+						// Don't create the instance if the workspace picker was canceled
+						return;
+					}
+					cwd = workspace.uri;
+				}
+
+				if (profile) {
+					instance = terminalService.createTerminal(profile, cwd);
+				} else {
+					instance = await terminalService.showProfileQuickPick('createInstance', cwd);
+				}
+
+				if (instance) {
+					terminalService.setActiveInstance(instance);
+				}
+			}
+			await terminalService.showPanel(true);
 		}
+	});
+	MenuRegistry.appendMenuItem(MenuId.TerminalTabsWidgetEmptyContext, {
+		command: {
+			id: TERMINAL_COMMAND_ID.NEW_WITH_PROFILE,
+			title: localize('workbench.action.terminal.newWithProfile.short', "New Terminal With Profile")
+		},
+		group: ContextMenuGroup.Create
 	});
 
 	registerAction2(class extends Action2 {
@@ -314,6 +353,25 @@ export function registerTerminalActions() {
 			}
 			terminalService.setActiveInstance(instance);
 			return terminalService.showPanel(true);
+		}
+	});
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: TERMINAL_COMMAND_ID.FOCUS_TABS_VIEW,
+				title: { value: localize('workbench.action.terminal.focus.tabsView', "Focus Terminal Tabs View"), original: 'Focus Terminal Tabs View' },
+				f1: true,
+				category,
+				keybinding: {
+					primary: KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KEY_T,
+					weight: KeybindingWeight.WorkbenchContrib,
+					when: ContextKeyExpr.or(KEYBINDING_CONTEXT_TERMINAL_TABS_FOCUS, KEYBINDING_CONTEXT_TERMINAL_FOCUS),
+				},
+				precondition: KEYBINDING_CONTEXT_TERMINAL_PROCESS_SUPPORTED,
+			});
+		}
+		async run(accessor: ServicesAccessor) {
+			await accessor.get(ITerminalService).focusTabsView();
 		}
 	});
 	registerAction2(class extends Action2 {
@@ -683,9 +741,17 @@ export function registerTerminalActions() {
 		constructor() {
 			super({
 				id: TERMINAL_COMMAND_ID.RENAME_INSTANCE,
-				title: { value: localize('workbench.action.terminal.rename', "Rename"), original: 'Rename' },
+				title: { value: localize('workbench.action.terminal.renameInstance', "Rename"), original: 'Rename' },
 				f1: false,
 				category,
+				keybinding: {
+					primary: KeyCode.F2,
+					mac: {
+						primary: KeyCode.Enter
+					},
+					when: ContextKeyExpr.and(KEYBINDING_CONTEXT_TERMINAL_TABS_FOCUS),
+					weight: KeybindingWeight.WorkbenchContrib
+				},
 				precondition: KEYBINDING_CONTEXT_TERMINAL_PROCESS_SUPPORTED,
 				menu: [
 					{
@@ -1381,6 +1447,13 @@ export function registerTerminalActions() {
 			}
 			await terminalService.showPanel(true);
 		}
+	});
+	MenuRegistry.appendMenuItem(MenuId.TerminalTabsWidgetEmptyContext, {
+		command: {
+			id: TERMINAL_COMMAND_ID.NEW,
+			title: localize('workbench.action.terminal.new.short', "New Terminal")
+		},
+		group: ContextMenuGroup.Create
 	});
 	MenuRegistry.appendMenuItem(MenuId.TerminalContainerContext, {
 		command: {

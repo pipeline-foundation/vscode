@@ -21,6 +21,9 @@ export const KEYBINDING_CONTEXT_TERMINAL_IS_OPEN = new RawContextKey<boolean>('t
 /** A context key that is set when the integrated terminal has focus. */
 export const KEYBINDING_CONTEXT_TERMINAL_FOCUS = new RawContextKey<boolean>('terminalFocus', false, nls.localize('terminalFocusContextKey', "Whether the terminal is focused"));
 
+/** A context key that is set when the integrated terminal tabs widget has focus. */
+export const KEYBINDING_CONTEXT_TERMINAL_TABS_FOCUS = new RawContextKey<boolean>('terminalTabsFocus', false, nls.localize('terminalTabsFocusContextKey', "Whether the terminal tabs widget is focused"));
+
 export const KEYBINDING_CONTEXT_TERMINAL_SHELL_TYPE_KEY = 'terminalShellType';
 /** A context key that is set to the detected shell for the most recently active terminal, this is set to the last known value when no terminals exist. */
 export const KEYBINDING_CONTEXT_TERMINAL_SHELL_TYPE = new RawContextKey<string>(KEYBINDING_CONTEXT_TERMINAL_SHELL_TYPE_KEY, undefined, { type: 'string', description: nls.localize('terminalShellTypeContextKey', "The shell type of the active terminal") });
@@ -96,8 +99,6 @@ export interface IShellLaunchConfigResolveOptions {
 	os: OperatingSystem;
 	allowAutomationShell?: boolean;
 }
-
-export const TERMINAL_DECORATIONS_SCHEME = 'vscode-terminal';
 
 export type FontWeight = 'normal' | 'bold' | number;
 
@@ -433,6 +434,7 @@ export const enum TERMINAL_COMMAND_ID {
 	SPLIT_IN_ACTIVE_WORKSPACE = 'workbench.action.terminal.splitInActiveWorkspace',
 	RELAUNCH = 'workbench.action.terminal.relaunch',
 	FOCUS_PREVIOUS_PANE = 'workbench.action.terminal.focusPreviousPane',
+	FOCUS_TABS_VIEW = 'workbench.action.terminal.focusTabsView',
 	FOCUS_NEXT_PANE = 'workbench.action.terminal.focusNextPane',
 	RESIZE_PANE_LEFT = 'workbench.action.terminal.resizePaneLeft',
 	RESIZE_PANE_RIGHT = 'workbench.action.terminal.resizePaneRight',

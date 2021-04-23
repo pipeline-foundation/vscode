@@ -36,7 +36,6 @@ import { IUriIdentityService } from 'vs/workbench/services/uriIdentity/common/ur
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { ILogService } from 'vs/platform/log/common/log';
 import { ContributedEditorPriority, DEFAULT_EDITOR_ASSOCIATION, IEditorOverrideService } from 'vs/workbench/services/editor/common/editorOverrideService';
-import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 
 type CachedEditorInput = ResourceEditorInput | IFileEditorInput | UntitledTextEditorInput;
 type OpenInEditorGroup = IEditorGroup | GroupIdentifier | SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE;
@@ -76,7 +75,6 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 		@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,
 		@ILogService private readonly logService: ILogService,
 		@IEditorOverrideService private readonly editorOverrideService: IEditorOverrideService,
-		@IExtensionService private readonly extensionService: IExtensionService
 	) {
 		super();
 
@@ -784,7 +782,6 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 	openEditors(editors: IEditorInputWithOptions[], group?: OpenInEditorGroup): Promise<IEditorPane[]>;
 	openEditors(editors: IResourceEditorInputType[], group?: OpenInEditorGroup): Promise<IEditorPane[]>;
 	async openEditors(editors: Array<IEditorInputWithOptions | IResourceEditorInputType>, group?: OpenInEditorGroup): Promise<IEditorPane[]> {
-		await this.extensionService.whenInstalledExtensionsRegistered();
 		// Convert to typed editors and options
 		const typedEditors: IEditorInputWithOptions[] = editors.map(editor => {
 			if (isEditorInputWithOptions(editor)) {
@@ -880,11 +877,16 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 	async replaceEditors(editors: IEditorReplacement[], group: IEditorGroup | GroupIdentifier): Promise<void>;
 	async replaceEditors(editors: Array<IEditorReplacement | IResourceEditorReplacement>, group: IEditorGroup | GroupIdentifier): Promise<void> {
 		const typedEditors: IEditorReplacement[] = [];
+		const targetGroup = typeof group === 'number' ? this.editorGroupService.getGroup(group) : group;
 
 		for (const replaceEditorArg of editors) {
 			if (replaceEditorArg.editor instanceof EditorInput) {
 				const replacementArg = replaceEditorArg as IEditorReplacement;
-
+				if (replacementArg.options?.override !== EditorOverride.DISABLED && targetGroup) {
+					const override = await this.editorOverrideService.resolveEditorOverride(replacementArg.replacement, replacementArg.options, targetGroup);
+					replacementArg.options = override?.options ?? replacementArg.options;
+					replacementArg.replacement = override?.editor ?? replacementArg.replacement;
+				}
 				typedEditors.push({
 					editor: replacementArg.editor,
 					replacement: replacementArg.replacement,
@@ -902,7 +904,6 @@ export class EditorService extends Disposable implements EditorServiceImpl {
 			}
 		}
 
-		const targetGroup = typeof group === 'number' ? this.editorGroupService.getGroup(group) : group;
 		if (targetGroup) {
 			return targetGroup.replaceEditors(typedEditors);
 		}
