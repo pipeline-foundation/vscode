@@ -20,6 +20,7 @@ import { localize } from 'vs/nls';
 import { Codicon } from 'vs/base/common/codicons';
 import { INotificationService, Severity } from 'vs/platform/notification/common/notification';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 
 interface IContributedEditorInput extends IEditorInput {
 	viewType?: string;
@@ -105,7 +106,7 @@ export class EditorOverrideService extends Disposable implements IEditorOverride
 		}
 		// Add the group as we might've changed it with the quickpick
 		if (input) {
-			this.sendOverrideTelemtry(input.editor);
+			this.sendOverrideTelemetry(input.editor);
 			return { ...input, group };
 		}
 		return input;
@@ -460,7 +461,7 @@ export class EditorOverrideService extends Disposable implements IEditorOverride
 		return undefined;
 	}
 
-	private sendOverrideTelemtry(chosenInput: IContributedEditorInput): void {
+	private sendOverrideTelemetry(chosenInput: IContributedEditorInput): void {
 		type editorOverrideClassification = {
 			viewType: { classification: 'PublicNonPersonalData', purpose: 'FeatureInsight' };
 		};
@@ -472,3 +473,5 @@ export class EditorOverrideService extends Disposable implements IEditorOverride
 		}
 	}
 }
+
+registerSingleton(IEditorOverrideService, EditorOverrideService);

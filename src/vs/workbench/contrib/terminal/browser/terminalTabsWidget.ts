@@ -30,6 +30,7 @@ import Severity from 'vs/base/common/severity';
 import { DisposableStore } from 'vs/base/common/lifecycle';
 
 const $ = DOM.$;
+const TAB_HEIGHT = 22;
 export const MIN_TABS_WIDGET_WIDTH = 46;
 export const DEFAULT_TABS_WIDGET_WIDTH = 80;
 export const MIDPOINT_WIDGET_WIDTH = (MIN_TABS_WIDGET_WIDTH + DEFAULT_TABS_WIDGET_WIDTH) / 2;
@@ -51,7 +52,7 @@ export class TerminalTabsWidget extends WorkbenchObjectTree<ITerminalInstance>  
 	) {
 		super('TerminalTabsTree', container,
 			{
-				getHeight: () => 22,
+				getHeight: () => TAB_HEIGHT,
 				getTemplateId: () => 'terminal.tabs'
 			},
 			[instantiationService.createInstance(TerminalTabsRenderer, container, instantiationService.createInstance(ResourceLabels, DEFAULT_LABELS_CONTAINER))],
@@ -70,7 +71,8 @@ export class TerminalTabsWidget extends WorkbenchObjectTree<ITerminalInstance>  
 				smoothScrolling: configurationService.getValue<boolean>('workbench.list.smoothScrolling'),
 				multipleSelectionSupport: false,
 				expandOnlyOnTwistieClick: true,
-				selectionNavigation: true
+				selectionNavigation: true,
+				additionalScrollHeight: TAB_HEIGHT
 			},
 			contextKeyService,
 			listService,
@@ -89,11 +91,14 @@ export class TerminalTabsWidget extends WorkbenchObjectTree<ITerminalInstance>  
 			}
 		});
 
-		// Dobule click should create a new terminal
-		DOM.addDisposableListener(container, DOM.EventType.DBLCLICK, e => {
+		this.onMouseDblClick(e => {
 			if (this.getFocus().length === 0) {
 				this._terminalService.createTerminal();
 			}
+		});
+
+		this.onMouseClick(e => {
+			e.element?.focus(true);
 		});
 
 		this.onDidOpen(async e => {
@@ -216,15 +221,18 @@ class TerminalTabsRenderer implements ITreeRenderer<ITerminalInstance, never, IT
 			template.actionBar.clear();
 			const primaryStatus = instance.statusList.primary;
 			if (primaryStatus && primaryStatus.severity >= Severity.Warning) {
-				label = `${prefix}$(${primaryStatus.icon?.id || instance.icon.id})`;
+				label = `${prefix}$(${primaryStatus.icon?.id || instance.icon?.id})`;
 			} else {
-				label = `${prefix}$(${instance.icon.id})`;
+				label = `${prefix}$(${instance.icon?.id})`;
 			}
 		} else {
 			this.fillActionBar(instance, template);
-			// Remove "Task - " from only tabs to give more horizontal space as it's obvious from
-			// the tab icon
-			label = `${prefix}$(${instance.icon.id}) ${instance.title.replace(/^Task - /, '')}`;
+			label = `${prefix}$(${instance.icon?.id})`;
+			// Only add the title if the icon is set, this prevents the title jumping around for
+			// example when launching with a ShellLaunchConfig.name and no icon
+			if (instance.icon) {
+				label += ` ${instance.title}`;
+			}
 		}
 
 		if (!template.elementDispoables) {
@@ -239,7 +247,8 @@ class TerminalTabsRenderer implements ITreeRenderer<ITerminalInstance, never, IT
 		}));
 		template.label.setResource({
 			resource: instance.resource,
-			name: label
+			name: label,
+			description: hasText ? instance.shellLaunchConfig.description : undefined
 		}, {
 			fileDecorations: {
 				colors: true,
