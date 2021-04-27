@@ -66,8 +66,9 @@ class NotebookModelReferenceCollection extends ReferenceCollection<Promise<IReso
 				workingCopyManager = <IFileWorkingCopyManager<NotebookFileWorkingCopyModel>><any>this._instantiationService.createInstance(
 					FileWorkingCopyManager,
 					workingCopyTypeId,
-					new NotebookFileWorkingCopyModelFactory(this._notebookService)
+					new NotebookFileWorkingCopyModelFactory(viewType, this._notebookService)
 				);
+				this._workingCopyManagers.set(workingCopyTypeId, workingCopyManager);
 			}
 			const model = this._instantiationService.createInstance(SimpleNotebookEditorModel, uri, viewType, workingCopyManager);
 			result = await model.load();
