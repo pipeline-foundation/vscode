@@ -545,7 +545,7 @@ export namespace WorkspaceEdit {
 						resource: entry.uri,
 						edit: entry.edit,
 						notebookMetadata: entry.notebookMetadata,
-						notebookVersionId: extHostNotebooks?.lookupNotebookDocument(entry.uri)?.apiNotebook.version
+						notebookVersionId: extHostNotebooks?.getNotebookDocument(entry.uri, true)?.apiNotebook.version
 					});
 
 				} else if (entry._type === types.FileEditType.CellOutput) {
@@ -580,7 +580,7 @@ export namespace WorkspaceEdit {
 						_type: extHostProtocol.WorkspaceEditType.Cell,
 						metadata: entry.metadata,
 						resource: entry.uri,
-						notebookVersionId: extHostNotebooks?.lookupNotebookDocument(entry.uri)?.apiNotebook.version,
+						notebookVersionId: extHostNotebooks?.getNotebookDocument(entry.uri, true)?.apiNotebook.version,
 						edit: {
 							editType: notebooks.CellEditType.Replace,
 							index: entry.index,
@@ -1130,37 +1130,35 @@ export namespace SignatureHelp {
 	}
 }
 
-export namespace InlineHint {
+export namespace InlayHint {
 
-	export function from(hint: vscode.InlineHint): modes.InlineHint {
+	export function from(hint: vscode.InlayHint): modes.InlayHint {
 		return {
 			text: hint.text,
-			range: Range.from(hint.range),
-			kind: InlineHintKind.from(hint.kind ?? types.InlineHintKind.Other),
-			description: hint.description && MarkdownString.fromStrict(hint.description),
+			position: Position.from(hint.position),
+			kind: InlayHintKind.from(hint.kind ?? types.InlayHintKind.Other),
 			whitespaceBefore: hint.whitespaceBefore,
 			whitespaceAfter: hint.whitespaceAfter
 		};
 	}
 
-	export function to(hint: modes.InlineHint): vscode.InlineHint {
-		const res = new types.InlineHint(
+	export function to(hint: modes.InlayHint): vscode.InlayHint {
+		const res = new types.InlayHint(
 			hint.text,
-			Range.to(hint.range),
-			InlineHintKind.to(hint.kind)
+			Position.to(hint.position),
+			InlayHintKind.to(hint.kind)
 		);
 		res.whitespaceAfter = hint.whitespaceAfter;
 		res.whitespaceBefore = hint.whitespaceBefore;
-		res.description = htmlContent.isMarkdownString(hint.description) ? MarkdownString.to(hint.description) : hint.description;
 		return res;
 	}
 }
 
-export namespace InlineHintKind {
-	export function from(kind: vscode.InlineHintKind): modes.InlineHintKind {
+export namespace InlayHintKind {
+	export function from(kind: vscode.InlayHintKind): modes.InlayHintKind {
 		return kind;
 	}
-	export function to(kind: modes.InlineHintKind): vscode.InlineHintKind {
+	export function to(kind: modes.InlayHintKind): vscode.InlayHintKind {
 		return kind;
 	}
 }
@@ -1662,16 +1660,14 @@ export namespace NotebookKernelPreload {
 	export function from(preload: vscode.NotebookKernelPreload): { uri: UriComponents; provides: string[] } {
 		return {
 			uri: preload.uri,
+			// todo@connor4312: the conditional here can be removed after a migration period
 			provides: typeof preload.provides === 'string'
 				? [preload.provides]
 				: preload.provides ?? []
 		};
 	}
 	export function to(preload: { uri: UriComponents; provides: string[] }): vscode.NotebookKernelPreload {
-		return {
-			uri: URI.revive(preload.uri),
-			provides: preload.provides
-		};
+		return new types.NotebookKernelPreload(URI.revive(preload.uri), preload.provides);
 	}
 }
 
