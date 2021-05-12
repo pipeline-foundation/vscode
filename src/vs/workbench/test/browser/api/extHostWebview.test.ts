@@ -99,31 +99,31 @@ suite('ExtHostWebview', () => {
 
 		assert.strictEqual(
 			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html')).toString()),
-			'webview.contoso.com/commit/remote/file///Users/codey/file.html',
+			'webview.contoso.com/commit/remote/file//Users/codey/file.html',
 			'Unix basic'
 		);
 
 		assert.strictEqual(
 			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/file.html#frag')).toString()),
-			'webview.contoso.com/commit/remote/file///Users/codey/file.html#frag',
+			'webview.contoso.com/commit/remote/file//Users/codey/file.html#frag',
 			'Unix should preserve fragment'
 		);
 
 		assert.strictEqual(
 			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///Users/codey/f%20ile.html')).toString()),
-			'webview.contoso.com/commit/remote/file///Users/codey/f%20ile.html',
+			'webview.contoso.com/commit/remote/file//Users/codey/f%20ile.html',
 			'Unix with encoding'
 		);
 
 		assert.strictEqual(
 			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file://localhost/Users/codey/file.html')).toString()),
-			'webview.contoso.com/commit/remote/file//localhost/Users/codey/file.html',
+			'webview.contoso.com/commit/remote/file/localhost/Users/codey/file.html',
 			'Unix should preserve authority'
 		);
 
 		assert.strictEqual(
 			stripEndpointUuid(webview.webview.asWebviewUri(URI.parse('file:///c:/codey/file.txt')).toString()),
-			'webview.contoso.com/commit/remote/file///c%3A/codey/file.txt',
+			'webview.contoso.com/commit/remote/file//c%3A/codey/file.txt',
 			'Windows C drive'
 		);
 	});

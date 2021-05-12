@@ -19,7 +19,9 @@ export interface WebviewInitData {
  * We encode the resource component of the uri so that on the main thread
  * we know where to load the resource from (remote or truly local):
  *
- * /authority?/scheme/path...
+ * ```txt
+ * /remote-authority?/scheme/resource-authority/path...
+ * ```
  */
 export function asWebviewUri(
 	initData: WebviewInitData,
@@ -27,11 +29,10 @@ export function asWebviewUri(
 	resource: vscode.Uri,
 ): vscode.Uri {
 	const uri = initData.webviewResourceRoot
-		.replace('{{resource}}', (initData.remote.authority ?? '') + '/' + resource.scheme + withoutScheme(resource))
+		.replace('{{resource}}', (initData.remote.authority ?? '') + '/' + resource.scheme + '/' + encodeURIComponent(resource.authority) + resource.path)
 		.replace('{{uuid}}', uuid);
-	return URI.parse(uri);
-}
-
-function withoutScheme(resource: vscode.Uri): string {
-	return resource.toString().replace(/^\S+?:/, '');
+	return URI.parse(uri).with({
+		fragment: resource.fragment,
+		query: resource.query,
+	});
 }

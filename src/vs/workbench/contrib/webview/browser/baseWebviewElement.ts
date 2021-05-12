@@ -244,25 +244,19 @@ export abstract class BaseWebview<T extends HTMLElement> extends Disposable {
 
 		this._register(this.on(WebviewMessageChannels.loadResource, (entry: { id: number, path: string, query: string, ifNoneMatch?: string }) => {
 			const rawPath = entry.path;
-			const remoteAuthorityMatch = rawPath.match(/^\/([^\/]*)(\/.+)$/);
-			if (!remoteAuthorityMatch) {
+			// ext-authority / scheme / path-authority / ...path
+			const match = rawPath.match(/^\/([^\/]*)\/([^\/]*)\/([^\/]*)(\/.+)$/);
+			if (!match) {
 				throw new Error('Could not parse resource url');
 			}
 
-			const remoteAuthority = decodeURIComponent(remoteAuthorityMatch[1]);
-			const pathWithoutAuthority = remoteAuthorityMatch[2];
+			const [_, remoteAuthority, scheme, pathAuthority, paths] = match;
 
-			const uri = URI.parse(pathWithoutAuthority.replace(/^\/([\w\-]+)(\/{1,2})/, (_: string, scheme: string, sep: string) => {
-				if (sep.length === 1) {
-					return `${scheme}:///`; // Add empty authority.
-				} else {
-					return `${scheme}://`; // Url has own authority.
-				}
-			})).with({
+			const uri = URI.parse(`${scheme}://${decodeURIComponent(pathAuthority)}${paths}`).with({
 				query: decodeURIComponent(entry.query),
 			});
 
-			this.loadResource(entry.id, rawPath, uri, remoteAuthority, entry.ifNoneMatch);
+			this.loadResource(entry.id, rawPath, uri, decodeURIComponent(remoteAuthority), entry.ifNoneMatch);
 		}));
 
 		this._register(this.on(WebviewMessageChannels.loadLocalhost, (entry: any) => {
@@ -389,10 +383,10 @@ export abstract class BaseWebview<T extends HTMLElement> extends Disposable {
 		const remoteAuthority = this.extension?.location.scheme === Schemas.vscodeRemote ? this.extension.location.authority : '';
 		return value
 			.replace(/(["'])(?:vscode-resource):(\/\/([^\s\/'"]+?)(?=\/))?([^\s'"]+?)(["'])/gi, (_match, startQuote, _1, scheme, path, endQuote) => {
-				return `${startQuote}${this.webviewResourceEndpoint}/vscode-resource/${remoteAuthority}/${scheme ?? 'file'}${path}${endQuote}`;
+				return `${startQuote}${this.webviewResourceEndpoint}/vscode-resource/${remoteAuthority}/${scheme ?? 'file'}/${path}${endQuote}`;
 			})
 			.replace(/(["'])(?:vscode-webview-resource):(\/\/[^\s\/'"]+\/([^\s\/'"]+?)(?=\/))?([^\s'"]+?)(["'])/gi, (_match, startQuote, _1, scheme, path, endQuote) => {
-				return `${startQuote}${this.webviewResourceEndpoint}/vscode-resource/${remoteAuthority}/${scheme ?? 'file'}${path}${endQuote}`;
+				return `${startQuote}${this.webviewResourceEndpoint}/vscode-resource/${remoteAuthority}/${scheme ?? 'file'}/${path}${endQuote}`;
 			});
 	}
 
